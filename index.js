@@ -1,4 +1,4 @@
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config();
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 const { 
     joinVoiceChannel, 
@@ -75,8 +75,23 @@ async function selectDevice() {
     });
 }
 
+// Check if FFmpeg is installed
+function checkFFmpeg() {
+    return new Promise((resolve, reject) => {
+        exec(`"${ffmpegPath}" -version`, (error, stdout, stderr) => {
+            if (error) {
+                console.error('FFmpeg is not installed or not found in system PATH.');
+                console.error('Please install FFmpeg and try again.');
+                process.exit(1);
+            }
+            resolve();
+        });
+    });
+}
+
 // Main Start Sequence
 (async () => {
+    await checkFFmpeg();
     await selectDevice();
 
     client.once(Events.ClientReady, c => {
