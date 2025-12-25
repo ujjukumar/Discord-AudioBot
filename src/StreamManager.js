@@ -18,9 +18,19 @@ class StreamManager {
     /**
      * Joins a voice channel.
      * @param {VoiceChannel} channel 
+     * @returns {VoiceConnection}
      */
     join(channel) {
-        // Implementation in next task
+        this.disconnect(); // Clean up existing connection if any
+
+        this.connection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+            selfDeaf: false
+        });
+
+        return this.connection;
     }
 
     /**
@@ -42,7 +52,11 @@ class StreamManager {
      * Disconnects from the voice channel.
      */
     disconnect() {
-        // Implementation in next task
+        this.stopStreaming();
+        if (this.connection) {
+            this.connection.destroy();
+            this.connection = null;
+        }
     }
 }
 
