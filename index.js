@@ -1,17 +1,12 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, Events } = require('discord.js');
-const { 
-    joinVoiceChannel, 
-    createAudioPlayer, 
-    createAudioResource, 
-    AudioPlayerStatus, 
-    VoiceConnectionStatus 
-} = require('@discordjs/voice');
-const { spawn, exec } = require('child_process');
+const { VoiceConnectionStatus } = require('@discordjs/voice');
+const { exec } = require('child_process');
 const readline = require('readline');
+const StreamManager = require('./src/StreamManager');
 
 // CONFIGURATION
-const ffmpegPath = 'ffmpeg'; // Ensure 'ffmpeg' is in your PATH
+const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
 
 const client = new Client({
     intents: [
@@ -22,9 +17,7 @@ const client = new Client({
     ]
 });
 
-let connection = null;
-let player = null;
-let ffmpegProcess = null;
+const streamManager = new StreamManager();
 let selectedAudioDevice = '';
 
 // Interactive CLI Device Selection
@@ -108,68 +101,17 @@ client.on(Events.MessageCreate, async message => {
         const channel = message.member?.voice.channel;
         if (!channel) return message.reply('Join a voice channel first!');
 
-        connection = joinVoiceChannel({
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator,
-            selfDeaf: false
-        });
+        const connection = streamManager.join(channel);
 
         connection.on(VoiceConnectionStatus.Ready, () => {
             console.log('Voice Connection Ready');
             message.reply('Joined! Streaming...');
-            startStreaming();
+            streamManager.startStreaming(selectedAudioDevice);
         });
     }
 
     if (message.content === '!stop') {
-        stopStreaming();
-        if (connection) connection.destroy();
+        streamManager.disconnect();
         message.reply('Stopped.');
     }
 });
-
-function startStreaming() {
-    stopStreaming(); 
-
-    player = createAudioPlayer();
-    
-    console.log(`[FFmpeg] Starting capture on: ${selectedAudioDevice}`);
-    
-    const args = [
-        '-f', 'dshow',
-        '-i', selectedAudioDevice,
-        '-ac', '2',
-        '-ar', '48000',
-        '-f', 's16le',
-        'pipe:1'
-    ];
-
-    ffmpegProcess = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-
-    ffmpegProcess.stderr.on('data', d => {
-        const msg = d.toString();
-        // Only log errors or device opens, filter frame progress
-        if (!msg.includes('size=') && !msg.includes('frame=')) {
-             console.log(`[FFmpeg] ${msg.trim()}`);
-        }
-    });
-
-    const resource = createAudioResource(ffmpegProcess.stdout, { inputType: 'raw' });
-    player.play(resource);
-    connection.subscribe(player);
-
-    player.on(AudioPlayerStatus.Playing, () => console.log('Audio is streaming.'));
-    player.on('error', error => console.error('Player Error:', error.message));
-}
-
-function stopStreaming() {
-    if (ffmpegProcess) {
-        ffmpegProcess.kill();
-        ffmpegProcess = null;
-    }
-    if (player) {
-        player.stop();
-        player = null;
-    }
-}
