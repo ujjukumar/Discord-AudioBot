@@ -22,9 +22,9 @@ let selectedAudioDevice = '';
 
 // Interactive CLI Device Selection
 async function selectDevice() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         console.log('Scanning audio devices...');
-        exec(`"${ffmpegPath}" -list_devices true -f dshow -i dummy`, (error, stdout, stderr) => {
+        exec(`"${ffmpegPath}" -list_devices true -f dshow -i dummy`, async (error, stdout, stderr) => {
             const output = stderr || stdout;
             const lines = output.split('\n');
             let devices = [];
@@ -41,29 +41,32 @@ async function selectDevice() {
                 process.exit(1);
             }
 
-            console.log('\n=== Available Audio Devices ===');
-            devices.forEach((d, i) => console.log(`${i + 1}. ${d}`));
-            console.log('===============================');
-
             const rl = readline.createInterface({
                 input: process.stdin,
                 output: process.stdout
             });
 
-            rl.question('\nEnter number to select device: ', (answer) => {
-                const index = parseInt(answer) - 1;
-                if (!isNaN(index) && index >= 0 && index < devices.length) {
-                    selectedAudioDevice = `audio=${devices[index]}`;
-                    console.log(`\nSelected: "${devices[index]}"`);
-                    console.log('Starting Bot...');
-                    rl.close();
-                    resolve();
-                } else {
-                    console.log('Invalid selection. Exiting.');
-                    rl.close();
-                    process.exit(1);
-                }
-            });
+            const ask = () => {
+                console.log('\n=== Available Audio Devices ===');
+                devices.forEach((d, i) => console.log(`${i + 1}. ${d}`));
+                console.log('===============================');
+
+                rl.question('\nEnter number to select device: ', (answer) => {
+                    const index = parseInt(answer) - 1;
+                    if (!isNaN(index) && index >= 0 && index < devices.length) {
+                        selectedAudioDevice = `audio=${devices[index]}`;
+                        console.log(`\nSelected: "${devices[index]}"`);
+                        console.log('Starting Bot...');
+                        rl.close();
+                        resolve();
+                    } else {
+                        console.log('\n[Error] Invalid selection. Please try again.');
+                        ask();
+                    }
+                });
+            };
+
+            ask();
         });
     });
 }
