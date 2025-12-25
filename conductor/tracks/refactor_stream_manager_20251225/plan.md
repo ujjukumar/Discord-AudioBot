@@ -1,6 +1,6 @@
 # Track Plan: Refactor Stream Manager & Improve CLI
 
-## Phase 1: StreamManager Implementation
+## Phase 1: StreamManager Implementation [checkpoint: 3413ede]
 - [x] Task: Create `src` directory and `StreamManager.js` structure d01cfa0
 - [x] Task: Implement `join` and `disconnect` methods in `StreamManager` fc638c6
 - [x] Task: Implement `startStreaming` and `stopStreaming` methods with FFmpeg logic 28d31be
