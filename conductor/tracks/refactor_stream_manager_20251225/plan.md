@@ -8,5 +8,5 @@
 
 ## Phase 2: CLI & Entry Point Refactor
 - [x] Task: Update `index.js` to use `StreamManager` 7de389b
-- [ ] Task: Implement robust loop for CLI device selection
+- [x] Task: Implement robust loop for CLI device selection 540c5b6
 - [ ] Task: Conductor - User Manual Verification 'CLI & Entry Point Refactor' (Protocol in workflow.md)
