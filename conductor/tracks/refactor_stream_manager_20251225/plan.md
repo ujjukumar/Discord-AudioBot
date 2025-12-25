@@ -3,7 +3,7 @@
 ## Phase 1: StreamManager Implementation
 - [x] Task: Create `src` directory and `StreamManager.js` structure d01cfa0
 - [x] Task: Implement `join` and `disconnect` methods in `StreamManager` fc638c6
-- [ ] Task: Implement `startStreaming` and `stopStreaming` methods with FFmpeg logic
+- [x] Task: Implement `startStreaming` and `stopStreaming` methods with FFmpeg logic 28d31be
 - [ ] Task: Conductor - User Manual Verification 'StreamManager Implementation' (Protocol in workflow.md)
 
 ## Phase 2: CLI & Entry Point Refactor
