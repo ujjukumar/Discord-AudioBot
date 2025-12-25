@@ -4,5 +4,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-## [ ] Track: Refactor the core streaming logic into a modular "StreamManager" class and improve CLI error handling.
+## [~] Track: Refactor the core streaming logic into a modular "StreamManager" class and improve CLI error handling.
 *Link: [./conductor/tracks/refactor_stream_manager_20251225/](./conductor/tracks/refactor_stream_manager_20251225/)*
