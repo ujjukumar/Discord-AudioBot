@@ -7,6 +7,6 @@
 - [ ] Task: Conductor - User Manual Verification 'StreamManager Implementation' (Protocol in workflow.md)
 
 ## Phase 2: CLI & Entry Point Refactor
-- [ ] Task: Update `index.js` to use `StreamManager`
+- [x] Task: Update `index.js` to use `StreamManager` 7de389b
 - [ ] Task: Implement robust loop for CLI device selection
 - [ ] Task: Conductor - User Manual Verification 'CLI & Entry Point Refactor' (Protocol in workflow.md)
