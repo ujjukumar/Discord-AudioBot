@@ -1,18 +1,21 @@
-const { 
-    joinVoiceChannel, 
-    createAudioPlayer, 
-    createAudioResource, 
-    AudioPlayerStatus, 
-    VoiceConnectionStatus 
+const {
+    joinVoiceChannel,
+    createAudioPlayer,
+    createAudioResource,
+    AudioPlayerStatus,
+    VoiceConnectionStatus
 } = require('@discordjs/voice');
 const { spawn } = require('child_process');
+const path = require('path');
 
 class StreamManager {
     constructor() {
         this.connection = null;
         this.player = null;
         this.ffmpegProcess = null;
+        this.audioCaptureProcess = null;
         this.ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
+        this.audioCaptureExe = path.join(__dirname, '..', 'AudioCapture', 'bin', 'Release', 'net10.0', 'AudioCapture.exe');
     }
 
     /**
@@ -27,23 +30,24 @@ class StreamManager {
             channelId: channel.id,
             guildId: channel.guild.id,
             adapterCreator: channel.guild.voiceAdapterCreator,
-            selfDeaf: false
+            selfDeaf: true
         });
 
         return this.connection;
     }
 
     /**
-     * Starts streaming audio from a device.
+     * Starts streaming audio from a device (original mode).
+     * Uses FFmpeg with dshow.
      * @param {string} selectedAudioDevice 
      */
     startStreaming(selectedAudioDevice) {
-        this.stopStreaming(); 
+        this.stopStreaming();
 
         this.player = createAudioPlayer();
-        
+
         console.log(`[FFmpeg] Starting capture on: ${selectedAudioDevice}`);
-        
+
         const args = [
             '-f', 'dshow',
             '-i', selectedAudioDevice,
@@ -59,18 +63,57 @@ class StreamManager {
             const msg = d.toString();
             // Only log errors or device opens, filter frame progress
             if (!msg.includes('size=') && !msg.includes('frame=')) {
-                 console.log(`[FFmpeg] ${msg.trim()}`);
+                console.log(`[FFmpeg] ${msg.trim()}`);
             }
         });
 
         const resource = createAudioResource(this.ffmpegProcess.stdout, { inputType: 'raw' });
         this.player.play(resource);
-        
+
         if (this.connection) {
             this.connection.subscribe(this.player);
         }
 
         this.player.on(AudioPlayerStatus.Playing, () => console.log('Audio is streaming.'));
+        this.player.on('error', error => console.error('Player Error:', error.message));
+    }
+
+    /**
+     * Starts streaming audio from a specific application (app mode).
+     * Uses the C# AudioCapture helper.
+     * @param {number} processId - The process ID to capture audio from
+     */
+    startAppStreaming(processId) {
+        this.stopStreaming();
+
+        this.player = createAudioPlayer();
+
+        console.log(`[AudioCapture] Starting capture for PID: ${processId}`);
+
+        const args = ['--capture', processId.toString()];
+
+        this.audioCaptureProcess = spawn(this.audioCaptureExe, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
+        this.audioCaptureProcess.stderr.on('data', d => {
+            const msg = d.toString();
+            console.log(`[AudioCapture] ${msg.trim()}`);
+        });
+
+        this.audioCaptureProcess.on('error', (err) => {
+            console.error(`[AudioCapture] Failed to start: ${err.message}`);
+            console.error('[AudioCapture] Make sure to build the AudioCapture project first:');
+            console.error('  cd AudioCapture && dotnet build -c Release');
+        });
+
+        // The C# helper outputs raw 48kHz/16-bit/stereo PCM directly
+        const resource = createAudioResource(this.audioCaptureProcess.stdout, { inputType: 'raw' });
+        this.player.play(resource);
+
+        if (this.connection) {
+            this.connection.subscribe(this.player);
+        }
+
+        this.player.on(AudioPlayerStatus.Playing, () => console.log('App audio is streaming.'));
         this.player.on('error', error => console.error('Player Error:', error.message));
     }
 
@@ -81,6 +124,10 @@ class StreamManager {
         if (this.ffmpegProcess) {
             this.ffmpegProcess.kill();
             this.ffmpegProcess = null;
+        }
+        if (this.audioCaptureProcess) {
+            this.audioCaptureProcess.kill();
+            this.audioCaptureProcess = null;
         }
         if (this.player) {
             this.player.stop();
