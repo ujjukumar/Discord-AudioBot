@@ -6,7 +6,7 @@
 - [x] Task: Implement `startStreaming` and `stopStreaming` methods with FFmpeg logic 28d31be
 - [ ] Task: Conductor - User Manual Verification 'StreamManager Implementation' (Protocol in workflow.md)
 
-## Phase 2: CLI & Entry Point Refactor
+## Phase 2: CLI & Entry Point Refactor [checkpoint: 540b8b6]
 - [x] Task: Update `index.js` to use `StreamManager` 7de389b
 - [x] Task: Implement robust loop for CLI device selection 540c5b6
 - [ ] Task: Conductor - User Manual Verification 'CLI & Entry Point Refactor' (Protocol in workflow.md)
