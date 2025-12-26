@@ -9,7 +9,7 @@
 - **@snazzah/davey:** Implementation of Discord's DAVE protocol for end-to-end encryption.
 
 ## Audio Processing & Encoding
-- **FFmpeg (System Installed):** Utilized via `child_process` to capture system audio (using `dshow` on Windows) and pipe it into the Discord stream.
+- **FFmpeg (System Installed):** Utilized via `child_process` to capture system audio (using `dshow` on Windows) and pipe it into the Discord stream. Path can be overridden via `FFMPEG_PATH` environment variable.
 - **libsodium-wrappers:** Provides necessary cryptographic primitives for voice data.
 - **opusscript:** Handles audio encoding into the Opus format required by Discord.
 
