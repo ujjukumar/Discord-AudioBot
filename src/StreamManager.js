@@ -7,6 +7,7 @@ const {
 } = require('@discordjs/voice');
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 class StreamManager {
     constructor() {
@@ -15,7 +16,15 @@ class StreamManager {
         this.ffmpegProcess = null;
         this.audioCaptureProcess = null;
         this.ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
+        
+        // Define path to the C# Capture helper
+        // TODO: Move this to a config file
         this.audioCaptureExe = path.join(__dirname, '..', 'AudioCapture', 'bin', 'Release', 'net10.0', 'AudioCapture.exe');
+        
+        if (!fs.existsSync(this.audioCaptureExe)) {
+            console.warn('[StreamManager] Warning: AudioCapture.exe not found at:', this.audioCaptureExe);
+            console.warn('[StreamManager] App capture mode will not work until you build the C# project.');
+        }
     }
 
     /**
@@ -67,6 +76,14 @@ class StreamManager {
             }
         });
 
+        this.ffmpegProcess.on('close', (code) => {
+            if (code !== 0 && code !== null) {
+                console.error(`[FFmpeg] Process exited unexpectedly with code ${code}`);
+            } else {
+                console.log('[FFmpeg] Process stopped.');
+            }
+        });
+
         const resource = createAudioResource(this.ffmpegProcess.stdout, { inputType: 'raw' });
         this.player.play(resource);
 
@@ -103,6 +120,15 @@ class StreamManager {
             console.error(`[AudioCapture] Failed to start: ${err.message}`);
             console.error('[AudioCapture] Make sure to build the AudioCapture project first:');
             console.error('  cd AudioCapture && dotnet build -c Release');
+        });
+
+        this.audioCaptureProcess.on('close', (code) => {
+            if (code !== 0 && code !== null) {
+                console.error(`[AudioCapture] Process exited unexpectedly with code ${code}`);
+                // Optional: You could emit an event here to notify the bot to tell the user
+            } else {
+                console.log('[AudioCapture] Process stopped.');
+            }
         });
 
         // The C# helper outputs raw 48kHz/16-bit/stereo PCM directly

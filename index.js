@@ -223,6 +223,13 @@ function checkFFmpeg() {
     client.login(process.env.DISCORD_TOKEN);
 })();
 
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\n[Bot] Shutting down gracefully...');
+    streamManager.disconnect();
+    setTimeout(() => process.exit(0), 1000);
+});
+
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot) return;
 

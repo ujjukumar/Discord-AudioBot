@@ -337,13 +337,49 @@ public class ProcessAudioCapture : IDisposable
 
     private static byte[] ConvertAudioFormat(byte[] input, int length, WaveFormat sourceFormat, WaveFormat targetFormat)
     {
+        // Optimized path: IEEE Float (32-bit) -> PCM (16-bit)
+        // This is the most common conversion needed for Wasapi Loopback -> Discord
+        if (sourceFormat.Encoding == WaveFormatEncoding.IeeeFloat && 
+            targetFormat.Encoding == WaveFormatEncoding.Pcm &&
+            sourceFormat.Channels == targetFormat.Channels &&
+            sourceFormat.SampleRate == targetFormat.SampleRate &&
+            sourceFormat.BitsPerSample == 32 &&
+            targetFormat.BitsPerSample == 16)
+        {
+            int sampleCount = length / 4; // 4 bytes per float
+            byte[] output = new byte[sampleCount * 2]; // 2 bytes per short
+
+            unsafe
+            {
+                fixed (byte* pIn = input)
+                fixed (byte* pOut = output)
+                {
+                    float* pFloat = (float*)pIn;
+                    short* pShort = (short*)pOut;
+
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        // Clamp and convert
+                        float sample = pFloat[i];
+                        if (sample > 1.0f) sample = 1.0f;
+                        else if (sample < -1.0f) sample = -1.0f;
+                        
+                        pShort[i] = (short)(sample * 32767.0f);
+                    }
+                }
+            }
+            return output;
+        }
+
+        // Fallback: Use MediaFoundationResampler for complex conversions (resampling, channel mixing)
+        // Note: This is expensive per-packet!
         try
         {
             using var sourceStream = new RawSourceWaveStream(new MemoryStream(input, 0, length), sourceFormat);
             using var resampler = new MediaFoundationResampler(sourceStream, targetFormat);
             resampler.ResamplerQuality = 60;
             
-            var outputBuffer = new byte[length * 4];
+            var outputBuffer = new byte[length * 4]; // Oversize buffer to be safe
             int bytesRead = resampler.Read(outputBuffer, 0, outputBuffer.Length);
             
             var result = new byte[bytesRead];
@@ -352,7 +388,7 @@ public class ProcessAudioCapture : IDisposable
         }
         catch
         {
-            // If conversion fails, return original
+            // If conversion fails, return original and hope for the best
             var result = new byte[length];
             Array.Copy(input, result, length);
             return result;
