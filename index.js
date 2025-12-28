@@ -1,227 +1,72 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Events, 
+    SlashCommandBuilder, 
+    REST, 
+    Routes,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    EmbedBuilder
+} = require('discord.js');
 const { VoiceConnectionStatus } = require('@discordjs/voice');
-const { exec, spawn } = require('child_process');
-const readline = require('readline');
-const path = require('path');
+const Menu = require('./src/cli/Menu');
 const StreamManager = require('./src/StreamManager');
-
-// CONFIGURATION
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
-const audioCaptureExe = path.join(__dirname, 'AudioCapture', 'bin', 'Release', 'net10.0', 'AudioCapture.exe');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
 const streamManager = new StreamManager();
+let config = {};
+let disconnectTimer = null;
 
-// Capture mode: 'device' or 'app'
-let captureMode = 'device';
-let selectedAudioDevice = '';
-let selectedAppPid = 0;
+// Register Slash Commands
+async function registerCommands(clientId) {
+    const commands = [
+        new SlashCommandBuilder()
+            .setName('join')
+            .setDescription('Joins your voice channel and starts streaming'),
+        new SlashCommandBuilder()
+            .setName('leave')
+            .setDescription('Stops streaming and leaves the voice channel')
+    ].map(command => command.toJSON());
 
-// Interactive CLI for Mode Selection
-async function selectCaptureMode() {
-    return new Promise((resolve) => {
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
-        console.log('\n=== Audio Capture Mode ===');
-        console.log('1. Device Mode - Capture from audio device (Stereo Mix, Microphone, etc.)');
-        console.log('2. App Mode    - Capture from a specific application');
-        console.log('==========================\n');
-
-        const ask = () => {
-            rl.question('Select mode (1 or 2): ', (answer) => {
-                if (answer === '1') {
-                    captureMode = 'device';
-                    rl.close();
-                    resolve();
-                } else if (answer === '2') {
-                    captureMode = 'app';
-                    rl.close();
-                    resolve();
-                } else {
-                    console.log('[Error] Please enter 1 or 2.');
-                    ask();
-                }
-            });
-        };
-        ask();
-    });
-}
-
-// Interactive CLI Device Selection
-async function selectDevice() {
-    return new Promise((resolve) => {
-        console.log('Scanning audio devices...');
-        exec(`"${ffmpegPath}" -list_devices true -f dshow -i dummy`, async (error, stdout, stderr) => {
-            const output = stderr || stdout;
-            const lines = output.split('\n');
-            let devices = [];
-
-            lines.forEach(line => {
-                if (line.includes('(audio)')) {
-                    const match = line.match(/"([^"]+)"/);
-                    if (match) devices.push(match[1]);
-                }
-            });
-
-            if (devices.length === 0) {
-                console.error('No audio devices found! Check if Stereo Mix is enabled in Windows Sound Settings.');
-                process.exit(1);
-            }
-
-            const rl = readline.createInterface({
-                input: process.stdin,
-                output: process.stdout
-            });
-
-            const ask = () => {
-                console.log('\n=== Available Audio Devices ===');
-                devices.forEach((d, i) => console.log(`${i + 1}. ${d}`));
-                console.log('===============================');
-
-                rl.question('\nEnter number to select device: ', (answer) => {
-                    const index = parseInt(answer) - 1;
-                    if (!isNaN(index) && index >= 0 && index < devices.length) {
-                        selectedAudioDevice = `audio=${devices[index]}`;
-                        console.log(`\nSelected: "${devices[index]}"`);
-                        rl.close();
-                        resolve();
-                    } else {
-                        console.log('\n[Error] Invalid selection. Please try again.');
-                        ask();
-                    }
-                });
-            };
-
-            ask();
-        });
-    });
-}
-
-// Interactive CLI App Selection
-async function selectApp() {
-    return new Promise((resolve, reject) => {
-        console.log('Scanning audio sessions...');
-
-        const proc = spawn(audioCaptureExe, ['--list']);
-        let output = '';
-
-        proc.stdout.on('data', (data) => {
-            output += data.toString();
-        });
-
-        proc.stderr.on('data', (data) => {
-            console.error(`[AudioCapture] ${data.toString().trim()}`);
-        });
-
-        proc.on('error', (err) => {
-            console.error(`Failed to run AudioCapture.exe: ${err.message}`);
-            console.error('Make sure to build the AudioCapture project:');
-            console.error('  cd AudioCapture && dotnet build -c Release');
-            reject(err);
-        });
-
-        proc.on('close', (code) => {
-            if (code !== 0) {
-                reject(new Error(`AudioCapture exited with code ${code}`));
-                return;
-            }
-
-            try {
-                const apps = JSON.parse(output);
-
-                if (apps.length === 0) {
-                    console.log('\nNo applications with audio sessions found.');
-                    console.log('Play some audio in an app and try again.');
-                    process.exit(1);
-                }
-
-                const rl = readline.createInterface({
-                    input: process.stdin,
-                    output: process.stdout
-                });
-
-                const ask = () => {
-                    console.log('\n=== Applications with Audio Sessions ===');
-                    apps.forEach((app, i) => {
-                        const status = app.isActive ? '🔊' : '🔇';
-                        console.log(`${i + 1}. ${status} ${app.processName} (PID: ${app.processId}) - ${app.windowTitle}`);
-                    });
-                    console.log('=========================================');
-                    console.log('🔊 = Currently playing audio | 🔇 = Has audio session but not playing');
-
-                    rl.question('\nEnter number to select app: ', (answer) => {
-                        const index = parseInt(answer) - 1;
-                        if (!isNaN(index) && index >= 0 && index < apps.length) {
-                            selectedAppPid = apps[index].processId;
-                            console.log(`\nSelected: "${apps[index].processName}" (PID: ${selectedAppPid})`);
-                            rl.close();
-                            resolve();
-                        } else {
-                            console.log('\n[Error] Invalid selection. Please try again.');
-                            ask();
-                        }
-                    });
-                };
-
-                ask();
-            } catch (e) {
-                reject(new Error(`Failed to parse audio sessions: ${e.message}`));
-            }
-        });
-    });
-}
-
-// Check if FFmpeg is installed
-function checkFFmpeg() {
-    return new Promise((resolve, reject) => {
-        exec(`"${ffmpegPath}" -version`, (error, stdout, stderr) => {
-            if (error) {
-                console.error('FFmpeg is not installed or not found in system PATH.');
-                console.error('Please install FFmpeg and try again.');
-                process.exit(1);
-            }
-            resolve();
-        });
-    });
+    try {
+        console.log('Started refreshing application (/) commands.');
+        // Register commands globally (might take time to cache, but easiest for single-bot usage)
+        // For instant update in dev, usually guild-specific is used, but we'll try global first.
+        await rest.put(
+            Routes.applicationCommands(clientId),
+            { body: commands },
+        );
+        console.log('Successfully reloaded application (/) commands.');
+    } catch (error) {
+        console.error(error);
+    }
 }
 
 // Main Start Sequence
 (async () => {
-    await checkFFmpeg();
-    await selectCaptureMode();
-
-    if (captureMode === 'device') {
-        await selectDevice();
-    } else {
-        await selectApp();
-    }
-
+    config = await Menu.run();
     console.log('Starting Bot...');
-
-    client.once(Events.ClientReady, c => {
-        console.log(`Ready! Logged in as ${c.user.tag}`);
-        console.log(`Mode: ${captureMode === 'device' ? 'Device' : 'App'}`);
-        if (captureMode === 'device') {
-            console.log(`Device: ${selectedAudioDevice}`);
-        } else {
-            console.log(`App PID: ${selectedAppPid}`);
-        }
-    });
-
     client.login(process.env.DISCORD_TOKEN);
 })();
+
+client.once(Events.ClientReady, async c => {
+    console.log(`\n🤖 Bot Ready! Logged in as ${c.user.tag}`);
+    console.log(`👉 Mode: ${config.mode === 'device' ? 'Device' : 'App'}`);
+    console.log(`⏱️  Auto-Disconnect: ${config.autoDisconnectTimeout} minutes`);
+    
+    await registerCommands(c.user.id);
+});
 
 // Graceful shutdown
 process.on('SIGINT', () => {
@@ -230,29 +75,113 @@ process.on('SIGINT', () => {
     setTimeout(() => process.exit(0), 1000);
 });
 
-client.on(Events.MessageCreate, async message => {
-    if (message.author.bot) return;
+// Dashboard Generator
+function createDashboard(status = 'playing') {
+    const isPaused = status === 'paused';
+    
+    const embed = new EmbedBuilder()
+        .setColor(isPaused ? 0xFFA500 : 0x0099FF)
+        .setTitle('🎧 AudioBot Control Panel')
+        .setDescription(`Streaming **${config.mode === 'device' ? 'Device Audio' : 'App Audio'}**`)
+        .addFields(
+            { name: 'Status', value: isPaused ? '⏸️ Paused' : '🟢 Live', inline: true },
+            { name: 'Source', value: config.mode === 'device' ? 'Input Device' : `PID: ${config.pid}`, inline: true }
+        )
+        .setFooter({ text: `Auto-disconnect: ${config.autoDisconnectTimeout}m if empty` });
 
-    if (message.content === '!join') {
-        const channel = message.member?.voice.channel;
-        if (!channel) return message.reply('Join a voice channel first!');
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('toggle_pause')
+                .setLabel(isPaused ? 'Resume Stream' : 'Pause Stream')
+                .setStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId('leave_channel')
+                .setLabel('Disconnect')
+                .setStyle(ButtonStyle.Danger)
+        );
 
-        const connection = streamManager.join(channel);
+    return { embeds: [embed], components: [row] };
+}
 
-        connection.on(VoiceConnectionStatus.Ready, () => {
-            console.log('Voice Connection Ready');
-            message.reply(`Joined! Streaming ${captureMode === 'device' ? 'device audio' : 'app audio'}...`);
+// Interaction Handler
+client.on(Events.InteractionCreate, async interaction => {
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'join') {
+            const channel = interaction.member?.voice.channel;
+            if (!channel) return interaction.reply({ content: '❌ Join a voice channel first!', ephemeral: true });
 
-            if (captureMode === 'device') {
-                streamManager.startStreaming(selectedAudioDevice);
-            } else {
-                streamManager.startAppStreaming(selectedAppPid);
+            await interaction.deferReply();
+
+            try {
+                const connection = streamManager.join(channel);
+
+                connection.on(VoiceConnectionStatus.Ready, () => {
+                    console.log('Voice Connection Ready');
+                    
+                    if (config.mode === 'device') {
+                        streamManager.startStreaming(config.device);
+                    } else {
+                        streamManager.startAppStreaming(config.pid);
+                    }
+
+                    interaction.editReply(createDashboard());
+                });
+
+            } catch (error) {
+                console.error(error);
+                interaction.editReply({ content: '❌ Failed to join or stream.' });
             }
-        });
+        }
+
+        if (interaction.commandName === 'leave') {
+            streamManager.disconnect();
+            await interaction.reply({ content: '👋 Disconnected.' });
+        }
+    } else if (interaction.isButton()) {
+        if (interaction.customId === 'toggle_pause') {
+            const status = streamManager.togglePause();
+            await interaction.update(createDashboard(status));
+        }
+        if (interaction.customId === 'leave_channel') {
+            streamManager.disconnect();
+            await interaction.update({ content: '👋 Disconnected.', components: [] });
+        }
+    }
+});
+
+// Auto-Disconnect Logic
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+    // Check if the update involves the bot's channel
+    const botId = client.user.id;
+    const botChannel = newState.guild.members.cache.get(botId)?.voice.channel;
+
+    if (!botChannel) {
+        // Bot is not in a channel, clear any timer
+        if (disconnectTimer) {
+            clearTimeout(disconnectTimer);
+            disconnectTimer = null;
+        }
+        return;
     }
 
-    if (message.content === '!stop') {
-        streamManager.disconnect();
-        message.reply('Stopped.');
+    // Check if bot is alone
+    if (botChannel.members.size === 1) {
+        if (!disconnectTimer) {
+            console.log(`[Auto-Disconnect] Bot is alone. Timer started (${config.autoDisconnectTimeout}m).`);
+            disconnectTimer = setTimeout(() => {
+                if (botChannel.members.size === 1) {
+                    console.log('[Auto-Disconnect] Timeout reached. Leaving channel.');
+                    streamManager.disconnect();
+                }
+            }, config.autoDisconnectTimeout * 60 * 1000);
+        }
+    } else {
+        // Bot is not alone
+        if (disconnectTimer) {
+            console.log('[Auto-Disconnect] Users present. Timer cancelled.');
+            clearTimeout(disconnectTimer);
+            disconnectTimer = null;
+        }
     }
 });

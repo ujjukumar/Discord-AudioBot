@@ -2,8 +2,7 @@ const {
     joinVoiceChannel,
     createAudioPlayer,
     createAudioResource,
-    AudioPlayerStatus,
-    VoiceConnectionStatus
+    AudioPlayerStatus
 } = require('@discordjs/voice');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -13,6 +12,7 @@ class StreamManager {
     constructor() {
         this.connection = null;
         this.player = null;
+        this.subscription = null;
         this.ffmpegProcess = null;
         this.audioCaptureProcess = null;
         this.ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -88,7 +88,7 @@ class StreamManager {
         this.player.play(resource);
 
         if (this.connection) {
-            this.connection.subscribe(this.player);
+            this.subscription = this.connection.subscribe(this.player);
         }
 
         this.player.on(AudioPlayerStatus.Playing, () => console.log('Audio is streaming.'));
@@ -136,7 +136,7 @@ class StreamManager {
         this.player.play(resource);
 
         if (this.connection) {
-            this.connection.subscribe(this.player);
+            this.subscription = this.connection.subscribe(this.player);
         }
 
         this.player.on(AudioPlayerStatus.Playing, () => console.log('App audio is streaming.'));
@@ -144,9 +144,31 @@ class StreamManager {
     }
 
     /**
+     * Toggles the pause state of the player.
+     * @returns {string} 'playing', 'paused', or 'stopped'
+     */
+    togglePause() {
+        if (!this.player) return 'stopped';
+
+        if (this.player.state.status === AudioPlayerStatus.Playing) {
+            this.player.pause();
+            return 'paused';
+        } else if (this.player.state.status === AudioPlayerStatus.Paused) {
+            this.player.unpause();
+            return 'playing';
+        }
+        
+        return 'stopped';
+    }
+
+    /**
      * Stops the current stream.
      */
     stopStreaming() {
+        if (this.subscription) {
+            this.subscription.unsubscribe();
+            this.subscription = null;
+        }
         if (this.ffmpegProcess) {
             this.ffmpegProcess.kill();
             this.ffmpegProcess = null;
